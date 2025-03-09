@@ -11,13 +11,16 @@ export default defineConfig({
   ],
   theme: {
     colors: {
-      bg: {
-        default: '#131B29',
-        hover: '#1E3059',
-        buyQuoteBar: 'rgba(16, 186, 104, 0.12)',
-        sellQuoteBar: 'rgba(255, 90, 90, 0.12)',
-        flashGreen: 'rgba(0, 177, 93, 0.5)',
-        flashRed: 'rgba(255, 91, 90, 0.5)',
+      default: '#131B29',
+      hover: '#1E3059',
+      quoteBar: {
+        default: 'rgba(134, 152, 170, 0.12)',
+        buy: 'rgba(16, 186, 104, 0.12)',
+        sell: 'rgba(255, 90, 90, 0.12)',
+      },
+      flash: {
+        green: 'rgba(0, 177, 93, 0.5)',
+        red: 'rgba(255, 91, 90, 0.5)',
       },
       text: {
         default: '#F0F4F8',
@@ -28,6 +31,6 @@ export default defineConfig({
     },
   },
   shortcuts: {
-    row: 'grid grid-cols-[25%_25%_50%]',
+    row: 'grid grid-cols-[30%_30%_40%] p-x-16px p-y-2px text-18px',
   },
 })
