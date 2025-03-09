@@ -1,5 +1,18 @@
 import { defineConfig, presetAttributify, presetUno } from 'unocss'
 
+// TODO: 有更好的做法嗎？
+const integerPercentages = Array.from({ length: 100 }, (_, i) => `w-${i + 1}%`)
+
+// TODO: 有更好的做法嗎？
+const decimalPercentages = []
+for (let i = 1; i <= 100; i += 0.1) {
+  // 限制小數點位數，避免浮點數精度問題
+  const percentage = Number(i.toFixed(1))
+  if (percentage <= 100) {
+    decimalPercentages.push(`w-${percentage}%`)
+  }
+}
+
 export default defineConfig({
   presets: [
     presetAttributify({
@@ -31,6 +44,10 @@ export default defineConfig({
     },
   },
   shortcuts: {
-    row: 'grid grid-cols-[30%_30%_40%] p-x-16px p-y-2px text-18px',
+    row: 'grid grid-cols-[30%_25%_45%] p-x-16px p-y-2px text-18px',
   },
+  safelist: [
+    ...integerPercentages, // 整數：w-1%, w-2%, ..., w-100%
+    ...decimalPercentages, // 小數點：w-1.0%, w-1.1%, ..., w-100.0%
+  ],
 })

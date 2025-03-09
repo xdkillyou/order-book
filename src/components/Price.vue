@@ -12,6 +12,8 @@ enum WsStatus {
 const wsInstance = ref<WebSocket | null>(null)
 const wsStatus = ref<WsStatus>(WsStatus.Idle)
 
+const price = ref<null | number>(null)
+const formattedPrice = computed(() => price.value && formatPrice(price.value, 1))
 const priceStatus = ref<PriceStatus>(PriceStatus.Flat)
 const priceStatusStyle = computed(() => {
   if (priceStatus.value === PriceStatus.Rising) {
@@ -22,9 +24,6 @@ const priceStatusStyle = computed(() => {
   }
   return 'bg-quoteBar-default color-text-default'
 })
-
-const price = ref<null | number>(null)
-const formattedPrice = computed(() => price.value && formatPrice(price.value, 1))
 
 function handlerError(error: Event) {
   wsStatus.value = WsStatus.Error
@@ -51,7 +50,7 @@ function handlerReceive(event: MessageEvent) {
   // console.log(event)
   const data: IPriceWsResponse = JSON.parse(event.data)
   if (data.topic === 'tradeHistoryApi') {
-    console.log('price', data.data[0].price)
+    // console.log('price', data.data[0].price)
     if (price.value) {
       if (data.data[0].price > price.value) {
         priceStatus.value = PriceStatus.Rising

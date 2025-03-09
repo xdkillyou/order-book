@@ -1,50 +1,139 @@
 <script setup lang="ts">
 import { formatPrice } from '@/utils/format'
+import type { IOrderBookWsResponse } from '@/types/orderBook'
 
-// const socket = ref(null)
+enum WsStatus {
+  'Idle',
+  'Connected',
+  'Close',
+  'Error',
+}
 
-// function initWebSocket() {
-//   // 1秒約30筆資料進來
-//   // socket.value = new WebSocket('wss://ws.btse.com/ws/oss/futures')
+function transformArray(arr) {
+  const result = [arr[0]] // 第一個元素不變
+  for (let i = 1; i < arr.length; i++) {
+    result[i] = arr[i] * 1 + result[i - 1] * 1 // 當前元素加上前一個結果
+  }
+  return result
+}
 
-//   socket.value.onopen = () => {
-//     console.log('WebSocket 連接成功')
-//     // socket.value.send(
-//     //   JSON.stringify({
-//     //     op: 'subscribe',
-//     //     args: ['update:BTCPFC_0'],
-//     //   }),
-//     // )\
-//   }
+const wsInstance = ref<WebSocket | null>(null)
+const wsStatus = ref<WsStatus>(WsStatus.Idle)
+const latestSeqNum = ref<number | null>(null)
 
-//   socket.value.onmessage = (event) => {
-//     const data = JSON.parse(event.data)
-//     if (data.topic === 'tradeHistoryApi') {
-//       console.log('event', JSON.parse(event.data))
-//       price.value = data.data[0].price
-//     }
-//   }
+const asksMap = ref<Map<string, string> | null>(null)
+const asksOldPrices = ref<string[] | null>(null)
+const asksRows = computed(() =>
+  asksMap.value ? [...asksMap.value.entries()].sort((a, b) => b[0] - a[0]).slice(-8) : [],
+)
+const asksTotal = computed(() =>
+  transformArray(asksRows.value.map(([_, amount]) => amount).toReversed()).reverse(),
+)
+const asksSizeSum = computed(() =>
+  asksMap.value
+    ? [...asksMap.value?.values()].reduce((acc, curr) => Number(acc) + Number(curr), 0)
+    : 0,
+)
 
-//   socket.value.onerror = (error) => {
-//     console.error('WebSocket 錯誤:', error)
-//   }
+const bidsMap = ref<Map<string, string> | null>(null)
+const bidsOldPrices = ref<string[] | null>(null)
+const bidsRows = computed(() =>
+  bidsMap.value ? [...bidsMap.value.entries()].sort((a, b) => b[0] - a[0]).slice(0, 8) : [],
+)
+const bidsTotal = computed(() => transformArray(bidsRows.value.map(([_, amount]) => amount)))
+const bidsSizeSum = computed(() =>
+  bidsMap.value
+    ? [...bidsMap.value?.values()].reduce((acc, curr) => Number(acc) + Number(curr), 0)
+    : 0,
+)
 
-//   socket.value.onclose = () => {
-//     console.log('WebSocket 連接關閉')
-//   }
-// }
+function handlerError(error: Event) {
+  wsStatus.value = WsStatus.Error
+  console.error('WebSocket 錯誤:', error)
+}
+function handlerClose() {
+  wsStatus.value = WsStatus.Close
+  console.log('WebSocket 連接關閉')
+}
+function handlerOpen() {
+  if (wsInstance.value) {
+    console.log('WebSocket 連接成功')
+    wsStatus.value = WsStatus.Connected
+
+    wsInstance.value.send(
+      JSON.stringify({
+        op: 'subscribe',
+        args: ['update:BTCPFC_0'],
+      }),
+    )
+  }
+}
+function handlerReceive(event: MessageEvent) {
+  const response: IOrderBookWsResponse = JSON.parse(event.data)
+  const { type, prevSeqNum, seqNum, asks, bids } = response.data
+  // console.info(type, prevSeqNum, seqNum, asks, bids)
+
+  if (type === 'snapshot') {
+    asksMap.value = new Map(asks)
+    bidsMap.value = new Map(bids)
+  } else {
+    asksOldPrices.value = asksRows.value.map(([price, _]) => price)
+    for (let i = 0; i < asks.length; i += 1) {
+      const [price, amount] = asks[i]
+      if (amount === '0') {
+        asksMap.value?.delete(price)
+      } else {
+        asksMap.value?.set(price, amount)
+      }
+    }
+
+    bidsOldPrices.value = bidsRows.value.map(([price, _]) => price)
+    for (let i = 0; i < bids.length; i += 1) {
+      const [price, amount] = bids[i]
+      if (amount === '0') {
+        bidsMap.value?.delete(price)
+      } else {
+        bidsMap.value?.set(price, amount)
+      }
+    }
+  }
+  if (latestSeqNum.value && latestSeqNum.value !== prevSeqNum) {
+    console.error('需要跑重新訂閱的流程')
+
+    wsInstance.value!.send(
+      JSON.stringify({
+        op: 'unsubscribe',
+        args: ['update:BTCPFC_0'],
+      }),
+    )
+    return
+  }
+  latestSeqNum.value = seqNum
+}
+
+function initWebSocket() {
+  // Use the first price in the array as the last price.
+  wsInstance.value = new WebSocket('wss://ws.btse.com/ws/oss/futures')
+
+  wsInstance.value.onopen = () => handlerOpen()
+  wsInstance.value.onmessage = (event) => handlerReceive(event)
+  wsInstance.value.onerror = (error) => handlerError(error)
+  wsInstance.value.onclose = () => handlerClose()
+}
 
 onMounted(() => {
-  // initWebSocket()
+  initWebSocket()
 })
 
 onBeforeUnmount(() => {
-  // socket.value.send(
-  //   JSON.stringify({
-  //     op: 'unsubscribe',
-  //     args: ['update:BTCPFC_0'],
-  //   }),
-  // )
+  if (wsInstance.value) {
+    wsInstance.value.send(
+      JSON.stringify({
+        op: 'unsubscribe',
+        args: ['update:BTCPFC_0'],
+      }),
+    )
+  }
 })
 </script>
 
@@ -84,23 +173,63 @@ onBeforeUnmount(() => {
       </div>
 
       <!-- sell area -->
-      <div v-for="index in 8" :key="index" un-row un-bg="hover:hover">
-        <div un-text="text-sellQuote">{{ formatPrice(21613.5, 1) }}</div>
-        <div un-text="right" un-m="r-8px">{{ formatPrice(1983834) }}</div>
-        <div un-text="right">{{ formatPrice(4901) }}</div>
+      <div
+        v-for="([price, amount], index) in asksRows"
+        :key="price"
+        un-row
+        un-bg="hover:hover"
+        class="fade-out"
+        :class="asksOldPrices?.includes(price) ? '' : 'bg-flash-red'"
+      >
+        <div un-text="text-sellQuote">{{ formatPrice(price, 1) }}</div>
+        <div un-text="right" un-m="r-8px">{{ formatPrice(amount) }}</div>
+        <div un-text="right" un-relative>
+          <p un-relative un-z="2">
+            {{ formatPrice(asksTotal[index]) }}
+          </p>
+          <div
+            un-bg="quoteBar-sell"
+            un-absolute
+            un-top="0"
+            un-bottom="0"
+            un-right="0"
+            un-z="1"
+            :class="`w-${((asksTotal[index] / asksSizeSum) * 100).toFixed(1)}%`"
+          ></div>
+        </div>
       </div>
 
       <!-- price -->
       <Price />
 
       <!-- buy area -->
-      <div v-for="index in 8" :key="index" un-row un-bg=" hover:hover">
-        <div un-text="text-buyQuote">{{ formatPrice(21330, 1) }}</div>
-        <div un-text="right" un-m="r-6px" un-p="x-2px" un-bg="flash-green">
-          {{ formatPrice(3691) }}
+      <div
+        v-for="([price, amount], index) in bidsRows"
+        :key="price"
+        un-row
+        un-bg="hover:hover"
+        class="fade-out"
+        :class="bidsOldPrices?.includes(price) ? '' : 'bg-flash-green'"
+      >
+        <div un-text="text-buyQuote">{{ formatPrice(price, 1) }}</div>
+        <div un-text="right" un-m="r-6px" un-p="x-2px">
+          {{ formatPrice(amount) }}
         </div>
         <!-- TODO: 會按照比例變動的bg -->
-        <div un-text="right" un-bg="quoteBar-buy">{{ formatPrice(53) }}</div>
+        <div un-text="right" un-relative>
+          <p un-relative un-z="2">
+            {{ formatPrice(bidsTotal[index]) }}
+          </p>
+          <div
+            un-bg="quoteBar-buy"
+            un-absolute
+            un-top="0"
+            un-bottom="0"
+            un-right="0"
+            un-z="1"
+            :class="`w-${((bidsTotal[index] / bidsSizeSum) * 100).toFixed(1)}%`"
+          ></div>
+        </div>
       </div>
     </div>
   </div>
@@ -111,5 +240,14 @@ html,
 body {
   font-family: Helvetica, Arial;
   letter-spacing: 0.4px;
+}
+
+.fade-out {
+  animation: fadeOut 0.3s forwards;
+}
+@keyframes fadeOut {
+  to {
+    background: transparent;
+  }
 }
 </style>
