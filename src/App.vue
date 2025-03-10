@@ -22,6 +22,7 @@ const wsStatus = ref<WsStatus>(WsStatus.Idle)
 const latestSeqNum = ref<number | null>(null)
 
 const asksMap = ref<Map<string, string> | null>(null)
+const asksOldMap = ref<Map<string, string> | null>(null)
 const asksOldPrices = ref<string[] | null>(null)
 const asksRows = computed(() =>
   asksMap.value ? [...asksMap.value.entries()].sort((a, b) => b[0] - a[0]).slice(-8) : [],
@@ -36,6 +37,7 @@ const asksSizeSum = computed(() =>
 )
 
 const bidsMap = ref<Map<string, string> | null>(null)
+const bidsOldMap = ref<Map<string, string> | null>(null)
 const bidsOldPrices = ref<string[] | null>(null)
 const bidsRows = computed(() =>
   bidsMap.value ? [...bidsMap.value.entries()].sort((a, b) => b[0] - a[0]).slice(0, 8) : [],
@@ -68,6 +70,7 @@ function handlerOpen() {
     )
   }
 }
+
 function handlerReceive(event: MessageEvent) {
   const response: IOrderBookWsResponse = JSON.parse(event.data)
   const { type, prevSeqNum, seqNum, asks, bids } = response.data
@@ -77,6 +80,8 @@ function handlerReceive(event: MessageEvent) {
     asksMap.value = new Map(asks)
     bidsMap.value = new Map(bids)
   } else {
+    asksOldMap.value = new Map(asksMap.value)
+    bidsOldMap.value = new Map(bidsMap.value)
     asksOldPrices.value = asksRows.value.map(([price, _]) => price)
     for (let i = 0; i < asks.length; i += 1) {
       const [price, amount] = asks[i]
@@ -99,10 +104,17 @@ function handlerReceive(event: MessageEvent) {
   }
   if (latestSeqNum.value && latestSeqNum.value !== prevSeqNum) {
     console.error('需要跑重新訂閱的流程')
+    latestSeqNum.value = null
 
     wsInstance.value!.send(
       JSON.stringify({
         op: 'unsubscribe',
+        args: ['update:BTCPFC_0'],
+      }),
+    )
+    wsInstance.value!.send(
+      JSON.stringify({
+        op: 'subscribe',
         args: ['update:BTCPFC_0'],
       }),
     )
@@ -182,7 +194,20 @@ onBeforeUnmount(() => {
         :class="asksOldPrices?.includes(price) ? '' : 'bg-flash-red'"
       >
         <div un-text="text-sellQuote">{{ formatPrice(price, 1) }}</div>
-        <div un-text="right" un-m="r-8px">{{ formatPrice(amount) }}</div>
+        <div
+          un-text="right"
+          un-m="r-8px"
+          :class="
+            asksOldMap?.get(price)
+              ? Number(asksOldMap.get(price))! > Number(amount)
+                ? 'bg-flash-green'
+                : 'bg-flash-red'
+              : ''
+          "
+          class="fade-out"
+        >
+          {{ formatPrice(amount) }}
+        </div>
         <div un-text="right" un-relative>
           <p un-relative un-z="2">
             {{ formatPrice(asksTotal[index]) }}
@@ -212,7 +237,19 @@ onBeforeUnmount(() => {
         :class="bidsOldPrices?.includes(price) ? '' : 'bg-flash-green'"
       >
         <div un-text="text-buyQuote">{{ formatPrice(price, 1) }}</div>
-        <div un-text="right" un-m="r-6px" un-p="x-2px">
+        <div
+          un-text="right"
+          un-m="r-6px"
+          un-p="x-2px"
+          :class="
+            bidsOldMap?.get(price)
+              ? Number(bidsOldMap.get(price))! > Number(amount)
+                ? 'bg-flash-green'
+                : 'bg-flash-red'
+              : ''
+          "
+          class="fade-out"
+        >
           {{ formatPrice(amount) }}
         </div>
         <!-- TODO: 會按照比例變動的bg -->
@@ -243,7 +280,7 @@ body {
 }
 
 .fade-out {
-  animation: fadeOut 0.3s forwards;
+  animation: fadeOut 0.5s forwards;
 }
 @keyframes fadeOut {
   to {
