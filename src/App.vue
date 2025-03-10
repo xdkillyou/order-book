@@ -1,4 +1,9 @@
 <script setup lang="ts">
+// TODO: need web worker(高頻資料影響main thread render)
+// TODO: 拆分use-websocket、order book row
+// TODO: 該如何優化Map，使其自動排序
+// TODO: 如何確定訂閱、取消訂閱確實執行
+// TODO: 型別優化
 import { formatPrice } from '@/utils/format'
 import type { IOrderBookWsResponse } from '@/types/orderBook'
 
